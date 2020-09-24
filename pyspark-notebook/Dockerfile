@@ -22,18 +22,32 @@ ARG openjdk_version="11"
 ENV APACHE_SPARK_VERSION="${spark_version}" \
     HADOOP_VERSION="${hadoop_version}"
 
+# Spark installation
+WORKDIR /tmp
+
+### Only for java 9 (https://github.com/jupyter/notebook/issues/743#issuecomment-376433913)
+#ENV JAVA_HOME="/usr/lib/jvm/jdk-${openjdk_version}"
+#RUN wget https://download.java.net/java/GA/jdk9/${openjdk_version}/binaries/openjdk-${openjdk_version}_linux-x64_bin.tar.gz
+#RUN tar -xvf openjdk-${openjdk_version}_linux-x64_bin.tar.gz && \
+#    mkdir -p /usr/lib/jvm && \
+#    mv jdk-9 /usr/lib/jvm/ && \
+#    update-alternatives --install "/usr/bin/java" "java" "/usr/lib/jvm/jdk-${openjdk_version}/bin/java" 1 && \
+#    update-alternatives --install "/usr/bin/javac" "javac" "/usr/lib/jvm/jdk-${openjdk_version}/bin/javac" 1 && \
+#    chmod a+x /usr/bin/java && \
+#    chmod a+x /usr/bin/javac && \
+#    chown -R root:root /usr/lib/jvm/jdk-9 && \
+#    rm openjdk-9_linux-x64_bin.tar.gz
+
 RUN apt-get -y update && \
     apt-get install --no-install-recommends -y \
     "openjdk-${openjdk_version}-jre-headless" \
     ca-certificates-java && \
     rm -rf /var/lib/apt/lists/*
 
-# Spark installation
-WORKDIR /tmp
 # Using the preferred mirror to download Spark
 # hadolint ignore=SC2046
-RUN wget -q $(wget -qO- https://www.apache.org/dyn/closer.lua/spark/spark-${APACHE_SPARK_VERSION}/spark-${APACHE_SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz\?as_json | \
-    python -c "import sys, json; content=json.load(sys.stdin); print(content['preferred']+content['path_info'])") && \
+# Get spark from https://archive.apache.org/dist/spark
+RUN wget -q https://archive.apache.org/dist/spark/spark-${APACHE_SPARK_VERSION}/spark-${APACHE_SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz && \
     echo "${spark_checksum} *spark-${APACHE_SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" | sha512sum -c - && \
     tar xzf "spark-${APACHE_SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" -C /usr/local --owner root --group root --no-same-owner && \
     rm "spark-${APACHE_SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz"
@@ -46,6 +60,13 @@ ENV SPARK_HOME=/usr/local/spark
 ENV PYTHONPATH="${SPARK_HOME}/python:${SPARK_HOME}/python/lib/py4j-${py4j_version}-src.zip" \
     SPARK_OPTS="--driver-java-options=-Xms1024M --driver-java-options=-Xmx4096M --driver-java-options=-Dlog4j.logLevel=info" \
     PATH=$PATH:$SPARK_HOME/bin
+
+# Install AWS packages
+WORKDIR /tmp
+RUN wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk/1.7.4/aws-java-sdk-1.7.4.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/2.7.3/hadoop-aws-2.7.3.jar && \
+    mv aws-java-sdk-1.7.4.jar hadoop-aws-2.7.3.jar ${SPARK_HOME}/jars/
+WORKDIR /usr/local
 
 USER $NB_UID
 
